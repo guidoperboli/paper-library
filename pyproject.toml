@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paper-library"
+version = "3.0.0"
+description = "DOI-based scientific paper downloader and local research library"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Guido Perboli"}]
+dependencies = [
+  "requests>=2.32",
+  "python-dotenv>=1.0",
+  "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+semantic = ["scikit-learn>=1.5"]
+
+[project.scripts]
+paper = "paperlib.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["paperlib*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
