@@ -48,23 +48,35 @@ class ElsevierConnector:
         )
         return paper, data
 
-    def download_pdf(self, doi: str, destination) -> tuple[bool, str]:
+    def download_document(self, doi: str, destination, format="json") -> tuple[bool, str]:
         if not self.api_key:
             return False, "missing_api_key"
         url = f"https://api.elsevier.com/content/article/doi/{quote(doi, safe='')}"
-        response = self.client.get(url, params={"httpAccept": "application/pdf"}, headers={**self.headers, "Accept": "application/pdf"}, stream=True)
+        accept = "application/json" if format == "json" else "application/pdf"
+        params = {"httpAccept": accept}
+        if format == "json":
+            params["view"] = "FULL"
+        response = self.client.get(url, params=params, headers={**self.headers, "Accept": accept}, stream=True)
         if response.status_code in (401, 403):
             return False, "not_entitled"
         if response.status_code == 404:
             return False, "not_found"
-        response.raise_for_status()
-        first = next(response.iter_content(65536), b"")
-        if not (first.startswith(b"%PDF") or "application/pdf" in response.headers.get("Content-Type", "").lower()):
+        try:
+            response.raise_for_status()
+        except Exception as exc:
+            return False, f"http_error_{response.status_code}"
+        iterator = response.iter_content(65536)
+        first = next(iterator, b"")
+        ctype = response.headers.get("Content-Type", "").lower()
+        if format == "pdf" and not (first.startswith(b"%PDF") or "application/pdf" in ctype):
             return False, "not_pdf"
+        elif format == "json" and "application/json" not in ctype:
+            return False, "not_json"
+            
         destination.parent.mkdir(parents=True, exist_ok=True)
         with destination.open("wb") as fh:
             fh.write(first)
-            for chunk in response.iter_content(65536):
+            for chunk in iterator:
                 if chunk:
                     fh.write(chunk)
         return True, "downloaded"

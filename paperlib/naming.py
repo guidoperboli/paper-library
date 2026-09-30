@@ -16,14 +16,14 @@ def clean_component(value: str, fallback: str, max_len: int = 100) -> str:
     return (value or fallback)[:max_len].rstrip(" .-")
 
 
-def filename_for(paper: Paper, max_total: int = 220) -> str:
+def filename_for(paper: Paper, ext: str = "pdf", max_total: int = 220) -> str:
     year = str(paper.year or "Unknown Year")
     journal = clean_component(paper.journal_abbr or paper.journal, "Unknown Journal", 45)
     author = clean_component(paper.first_author, "Unknown", 40)
     prefix = f"{year} - {journal} - {author} - "
-    available = max(24, max_total - len(prefix) - 4)
+    available = max(24, max_total - len(prefix) - 1 - len(ext))
     title = clean_component(paper.title, "Untitled", available)
-    return f"{prefix}{title}.pdf"
+    return f"{prefix}{title}.{ext}"
 
 
 def unique_path(path: Path) -> Path:

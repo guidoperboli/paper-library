@@ -10,6 +10,7 @@ from .config import Settings
 from .connectors.crossref import CrossrefConnector
 from .connectors.elsevier import ElsevierConnector
 from .connectors.openalex import OpenAlexConnector
+from .connectors.scihub import SciHubConnector
 from .connectors.semantic_scholar import SemanticScholarConnector
 from .connectors.unpaywall import UnpaywallConnector
 from .database.sqlite import LibraryDB
@@ -31,6 +32,7 @@ class PaperLibrary:
         self.unpaywall = UnpaywallConnector(client, settings.unpaywall_email)
         self.openalex = OpenAlexConnector(client, settings.crossref_email)
         self.semantic = SemanticScholarConnector(client, settings.semantic_scholar_api_key)
+        self.scihub = SciHubConnector(client, settings.scihub_url)
 
     def _save_raw(self, source: str, doi: str, data: dict) -> str:
         if not data:
@@ -39,20 +41,21 @@ class PaperLibrary:
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         return str(path)
 
-    def _download_url(self, url: str, destination: Path) -> bool:
+    def _download_url(self, url: str, destination: Path, verify: bool = True) -> bool:
         if not url:
             return False
-        response = self.elsevier.client.get(url, stream=True, allow_redirects=True)
+        response = self.elsevier.client.get(url, stream=True, allow_redirects=True, verify=verify)
         if not response.ok:
             return False
-        first = next(response.iter_content(65536), b"")
+        iterator = response.iter_content(65536)
+        first = next(iterator, b"")
         ctype = response.headers.get("Content-Type", "").lower()
         if not (first.startswith(b"%PDF") or "application/pdf" in ctype):
             return False
         destination.parent.mkdir(parents=True, exist_ok=True)
         with destination.open("wb") as fh:
             fh.write(first)
-            for chunk in response.iter_content(65536):
+            for chunk in iterator:
                 if chunk:
                     fh.write(chunk)
         return True
@@ -83,16 +86,32 @@ class PaperLibrary:
             except Exception:
                 continue
         paper = merge_papers(doi, papers)
-        year_dir = self.settings.library_dir / "pdf" / str(paper.year or "unknown")
-        target = year_dir / filename_for(paper)
+        year_dir = self.settings.library_dir / "papers" / str(paper.year or "unknown")
+        target_json = year_dir / filename_for(paper, ext="json")
+        target_pdf = year_dir / filename_for(paper, ext="pdf")
         if not overwrite:
-            target = unique_path(target)
+            target_json = unique_path(target_json)
+            target_pdf = unique_path(target_pdf)
         downloaded = False
+        target = target_json
         try:
-            downloaded, reason = self.elsevier.download_pdf(doi, target)
-            if not downloaded and paper.pdf_url:
-                downloaded = self._download_url(paper.pdf_url, target)
-                reason = "downloaded_open_access" if downloaded else reason
+            downloaded, reason = self.elsevier.download_document(doi, target_json, format="json")
+            if downloaded:
+                target = target_json
+            elif paper.pdf_url:
+                downloaded = self._download_url(paper.pdf_url, target_pdf)
+                if downloaded:
+                    target = target_pdf
+                    reason = "downloaded_open_access"
+            
+            if not downloaded and self.settings.use_scihub:
+                scihub_pdf = self.scihub.get_pdf_url(doi)
+                if scihub_pdf:
+                    downloaded = self._download_url(scihub_pdf, target_pdf, verify=False)
+                    if downloaded:
+                        target = target_pdf
+                        reason = "downloaded_scihub"
+            
             paper.status = "downloaded" if downloaded else "metadata_only"
             paper.error = "" if downloaded else reason
             if downloaded:

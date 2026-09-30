@@ -19,6 +19,8 @@ class Settings:
     delay: float
     max_workers: int
     user_agent: str
+    use_scihub: bool
+    scihub_url: str
 
     @classmethod
     def load(cls, env_file: str | Path | None = None) -> "Settings":
@@ -36,12 +38,14 @@ class Settings:
             delay=float(os.getenv("DOWNLOAD_DELAY", "0.5")),
             max_workers=max(1, int(os.getenv("MAX_WORKERS", "4"))),
             user_agent=os.getenv("USER_AGENT", f"PaperLibrary/3.0 (mailto:{email or 'unknown@example.org'})"),
+            use_scihub=os.getenv("USE_SCIHUB", "true").lower() == "true",
+            scihub_url=os.getenv("SCIHUB_URL", "https://sci-hub.ru"),
         )
 
     def ensure_dirs(self) -> None:
         for path in [
             self.library_dir,
-            self.library_dir / "pdf",
+            self.library_dir / "papers",
             self.library_dir / "metadata",
             self.library_dir / "metadata" / "scopus",
             self.library_dir / "metadata" / "crossref",
